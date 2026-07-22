@@ -47,4 +47,21 @@ describe('ShiftTiming', () => {
     expect(result.getOk()).toBe(false);
     expect(result.getError()).toMatch(/document is required/i);
   });
+
+  it('REGRESSION (found by adversarial review): fails with a structured error, not ok:true with corrupted negative timestamps, when a negative offset would push a cue before zero', () => {
+    // Before the fix, this returned ok:true with start_ms=-900/end_ms=-500,
+    // which then corrupted on serialization (e.g. SerializeSrt emitted
+    // "0-1:0-1:0-1,00-900 --> ...", unparseable garbage) while still
+    // reporting ok:true throughout.
+    const doc = makeDocument({
+      format: 'srt',
+      cues: [makeCue({ index: 1, startMs: 100, endMs: 500, text: 'a' })],
+    });
+    const req = new ShiftTimingRequest();
+    req.setDocument(doc);
+    req.setOffsetMs(-1000);
+    const result = shiftTiming(ctx, req);
+    expect(result.getOk()).toBe(false);
+    expect(result.getError()).toMatch(/negative timestamp/i);
+  });
 });

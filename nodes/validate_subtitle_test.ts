@@ -55,4 +55,15 @@ describe('ValidateSubtitle', () => {
     const result = validateSubtitle(ctx, doc);
     expect(result.getIssuesList().some((i) => i.getKind() === 'empty_text')).toBe(true);
   });
+
+  it('REGRESSION (found by adversarial review): flags a negative timestamp as an "error", making the document invalid', () => {
+    const doc = makeDocument({
+      format: 'srt',
+      cues: [makeCue({ index: 1, startMs: -900, endMs: -500, text: 'a' })],
+    });
+    const result = validateSubtitle(ctx, doc);
+    expect(result.getValid()).toBe(false);
+    const issues = result.getIssuesList();
+    expect(issues.some((i) => i.getCueIndex() === 1 && i.getKind() === 'negative_timestamp' && i.getSeverity() === 'error')).toBe(true);
+  });
 });

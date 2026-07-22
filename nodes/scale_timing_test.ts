@@ -53,4 +53,17 @@ describe('ScaleTiming', () => {
     expect(result.getOk()).toBe(false);
     expect(result.getError()).toMatch(/document is required/i);
   });
+
+  it('REGRESSION (same class as ShiftTiming, found by adversarial review): a negative factor producing negative timestamps fails with a structured error rather than ok:true with corrupted output', () => {
+    const doc = makeDocument({
+      format: 'srt',
+      cues: [makeCue({ index: 1, startMs: 1000, endMs: 2000, text: 'a' })],
+    });
+    const req = new ScaleTimingRequest();
+    req.setDocument(doc);
+    req.setFactor(-1);
+    const result = scaleTiming(ctx, req);
+    expect(result.getOk()).toBe(false);
+    expect(result.getError()).toMatch(/negative timestamp/i);
+  });
 });

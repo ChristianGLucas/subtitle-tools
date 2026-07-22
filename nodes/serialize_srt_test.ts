@@ -50,4 +50,14 @@ describe('SerializeSrt', () => {
     expect(result.getOk()).toBe(false);
     expect(result.getError()).toMatch(/bounds/i);
   });
+
+  it('REGRESSION (found by adversarial review): rejects a document with a negative timestamp rather than emitting corrupted output — defense in depth for a document built by other means than ShiftTiming (e.g. hand-constructed flow input)', () => {
+    const doc = makeDocument({
+      format: 'srt',
+      cues: [makeCue({ index: 1, startMs: -900, endMs: -500, text: 'a' })],
+    });
+    const result = serializeSrt(ctx, doc);
+    expect(result.getOk()).toBe(false);
+    expect(result.getError()).toMatch(/negative timestamp/i);
+  });
 });

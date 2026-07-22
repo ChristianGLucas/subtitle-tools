@@ -72,6 +72,29 @@ export function checkCueCount(n: number): void {
   }
 }
 
+/** Rejects a document containing any cue with a negative start_ms or
+ * end_ms. Every per-format time-string formatter this package uses
+ * (subsrt-ts's own `helper.toTimeString` for srt/vtt/ass, read directly
+ * from vendor/subsrt-ts/format/*.ts) does no negative-number handling at
+ * all and silently emits corrupted, unparseable timestamp text for a
+ * negative input (e.g. "0-1:0-1:0-1,00-900") while returning normally —
+ * so a negative timestamp reaching a Serialize node would otherwise
+ * produce garbage output under `ok: true`. Called both by resyncCues
+ * (ShiftTiming/ScaleTiming fail fast, before ever computing a negative
+ * result the caller would have to notice downstream) and by every
+ * build*() function (defense in depth for a document with negative
+ * timestamps arriving by any other path — e.g. hand-built flow input). */
+export function checkNonNegativeCues(cues: Cue[]): void {
+  for (const cue of cues) {
+    if (cue.getStartMs() < 0 || cue.getEndMs() < 0) {
+      throw new Error(
+        `cue ${cue.getIndex()} has a negative timestamp (start_ms=${cue.getStartMs()}, end_ms=${cue.getEndMs()}); ` +
+          'subtitle timestamps cannot be negative',
+      );
+    }
+  }
+}
+
 export function errorMessage(e: unknown, context: string): string {
   if (e instanceof Error) return `${context}: ${e.message}`;
   return `${context}: ${String(e)}`;
@@ -269,8 +292,9 @@ export function documentCuesToCaptions(doc: SubtitleDocument): ContentCaption[] 
  * package's SubtitleDocument carries beyond cues is lost by using the
  * library's own builder unmodified. */
 export function buildSrt(doc: SubtitleDocument): string {
+  checkCueCount(doc.getCuesList().length);
+  checkNonNegativeCues(doc.getCuesList());
   const captions = documentCuesToCaptions(doc);
-  checkCueCount(captions.length);
   return subsrt.build(captions as unknown as Caption[], { format: 'srt' });
 }
 
@@ -285,6 +309,7 @@ const CRLF = '\r\n';
 export function buildVtt(doc: SubtitleDocument): string {
   const cues = doc.getCuesList();
   checkCueCount(cues.length);
+  checkNonNegativeCues(cues);
   let out = 'WEBVTT';
   const header = doc.getHeader();
   if (header) {
@@ -339,6 +364,7 @@ const ASS_DEFAULT_SCRIPT_INFO: [string, string][] = [
 export function buildAss(doc: SubtitleDocument, isAss: boolean): string {
   const cues = doc.getCuesList();
   checkCueCount(cues.length);
+  checkNonNegativeCues(cues);
   const columns = isAss ? ASS_V4_PLUS_COLUMNS : ASS_V4_COLUMNS;
   const defaultStyle = isAss ? ASS_V4_PLUS_DEFAULT_STYLE : ASS_V4_DEFAULT_STYLE;
 
@@ -390,7 +416,17 @@ export function buildAss(doc: SubtitleDocument, isAss: boolean): string {
  * original Cue protos (preserving text/content/settings/fields, which
  * resync never touches). `offsetMs` alone -> subsrt.resync(captions,
  * offsetMs); `ratio` alone or with `offsetMs` -> subsrt.resync(captions,
- * {offset: offsetMs, ratio}), matching the library's own two call shapes. */
+ * {offset: offsetMs, ratio}), matching the library's own two call shapes.
+ *
+ * Rejects (throws) if the result would contain a negative start_ms/end_ms
+ * — subsrt.resync() itself performs no such check (confirmed by reading
+ * vendor/subsrt-ts/subsrt.ts: `resync`'s shift function is unconditional
+ * arithmetic), and a negative timestamp reaching a Serialize node would
+ * otherwise silently produce corrupted, unparseable output text under
+ * `ok: true` (every format's time-string formatter does no negative-number
+ * handling — see checkNonNegativeCues). Failing here, at the point the
+ * caller's offset/factor actually produced the bad value, is more useful
+ * than only catching it later in Serialize. */
 export function resyncCues(doc: SubtitleDocument, offsetMs: number, ratio?: number): Cue[] {
   const captions = documentCuesToCaptions(doc) as unknown as Caption[];
   const resynced =
@@ -398,13 +434,15 @@ export function resyncCues(doc: SubtitleDocument, offsetMs: number, ratio?: numb
       ? subsrt.resync(captions, offsetMs)
       : subsrt.resync(captions, { offset: offsetMs, ratio });
   const originals = doc.getCuesList();
-  return resynced.map((r, i) => {
+  const out = resynced.map((r, i) => {
     const rc = r as ContentCaption;
-    const out = originals[i].cloneMessage() as Cue;
-    out.setStartMs(rc.start);
-    out.setEndMs(rc.end);
-    return out;
+    const clone = originals[i].cloneMessage() as Cue;
+    clone.setStartMs(rc.start);
+    clone.setEndMs(rc.end);
+    return clone;
   });
+  checkNonNegativeCues(out);
+  return out;
 }
 
 /** Renumbers each cue's leading sequence-number line to a sequential 1..N,

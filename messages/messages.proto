@@ -50,7 +50,12 @@ message Cue {
   // 1-based display order within the document (SRT's own sequence number,
   // or assembled order for formats without an explicit index).
   int32 index = 1;
-  // Cue start time, milliseconds from document start. Always >= 0.
+  // Cue start time, milliseconds from document start. Always >= 0 on
+  // output from any node in this package: ShiftTiming/ScaleTiming reject
+  // an offset/factor that would produce a negative result, every
+  // Serialize node rejects a document containing one, and
+  // ValidateSubtitle flags one ("negative_timestamp") should a document
+  // built by other means (e.g. hand-constructed flow input) carry one.
   int64 start_ms = 2;
   // Cue end time, milliseconds from document start. Normally > start_ms;
   // see ValidateSubtitle for a node that flags when it is not.
@@ -268,7 +273,7 @@ message MergeCuesRequest {
 message ValidationIssue {
   // The offending Cue's `index` field (0 if the issue is document-level).
   int32 cue_index = 1;
-  // "overlap" | "negative_duration" | "zero_duration" | "out_of_order" | "empty_text".
+  // "overlap" | "negative_duration" | "zero_duration" | "negative_timestamp" | "out_of_order" | "empty_text".
   string kind = 2;
   // "error" | "warning".
   string severity = 3;

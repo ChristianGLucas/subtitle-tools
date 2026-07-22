@@ -13,14 +13,19 @@ function issue(cueIndex: number, kind: string, severity: string, message: string
 
 /**
  * Checks a SubtitleDocument's cues (in their EXISTING order — this does not
- * sort first) for: negative or zero duration (end_ms <= start_ms, "error"),
- * cues out of start-time order relative to the previous cue ("warning" —
- * not itself wrong, but usually a sign of a bad export), consecutive cues
- * whose times overlap ("warning"), and empty cue text ("warning"). Reports
- * every issue found, each tagged with the offending cue's `index`.
- * `valid` is true iff there are zero "error"-severity issues (warnings
- * alone do not make a document invalid). See FixCommonIssues to
- * automatically correct the "error"-severity issues.
+ * sort first) for: a negative start_ms or end_ms ("error" — every
+ * Serialize node rejects these outright, since every format's time-string
+ * formatter corrupts on a negative input), negative or zero duration
+ * (end_ms <= start_ms, "error"), cues out of start-time order relative to
+ * the previous cue ("warning" — not itself wrong, but usually a sign of a
+ * bad export), consecutive cues whose times overlap ("warning"), and empty
+ * cue text ("warning"). Reports every issue found, each tagged with the
+ * offending cue's `index`. `valid` is true iff there are zero
+ * "error"-severity issues (warnings alone do not make a document invalid).
+ * See FixCommonIssues to automatically correct the "error"-severity
+ * issues (except negative timestamps, which it does not currently fix —
+ * clamping a negative start is ambiguous in a way a non-positive
+ * duration is not, so it is left for the caller to decide).
  *
  * @param ax - Platform context: ax.log for logging, ax.secrets for secrets.
  */
@@ -34,6 +39,11 @@ export function validateSubtitle(ax: AxiomContext, input: SubtitleDocument): Val
       const cue = cues[i];
       const start = cue.getStartMs();
       const end = cue.getEndMs();
+      if (start < 0 || end < 0) {
+        issues.push(
+          issue(cue.getIndex(), 'negative_timestamp', 'error', `cue ${cue.getIndex()}: start_ms (${start}) or end_ms (${end}) is negative`),
+        );
+      }
       if (end <= start) {
         const kind = end === start ? 'zero_duration' : 'negative_duration';
         issues.push(issue(cue.getIndex(), kind, 'error', `cue ${cue.getIndex()}: end_ms (${end}) <= start_ms (${start})`));

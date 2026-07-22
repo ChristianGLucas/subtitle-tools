@@ -79,4 +79,14 @@ describe('SerializeAss', () => {
     expect(result.getOk()).toBe(false);
     expect(result.getError()).toMatch(/bounds/i);
   });
+
+  it('REGRESSION (found by adversarial review): rejects a document with a negative timestamp rather than emitting corrupted output', () => {
+    const doc = makeDocument({
+      format: 'ass',
+      cues: [makeCue({ index: 1, startMs: -900, endMs: -500, text: 'a' })],
+    });
+    const result = serializeAss(ctx, doc);
+    expect(result.getOk()).toBe(false);
+    expect(result.getError()).toMatch(/negative timestamp/i);
+  });
 });
