@@ -1,0 +1,161 @@
+name: christiangeorgelucas/subtitle-tools
+version: 0.1.0
+language: typescript
+description: >
+  Deterministic parsing, conversion, and manipulation of subtitle/caption
+  files — SRT (SubRip), WebVTT, and ASS/SSA (SubStation Alpha), plus SBV/
+  SMI/LRC via the generic convert node. Wraps subsrt-ts (MIT, zero runtime
+  dependencies). Every node is a pure single-input -> single-output
+  transform over caller-supplied text: no video, no network, no wall-clock,
+  no randomness. Covers format detection, parsing to a normalized
+  millisecond-timed cue list, per-format parse/serialize (including WebVTT
+  header/cue-settings/NOTE comments and ASS dialogue/styles), SRT<->WebVTT
+  conversion, timing shift/scale (resync and framerate-drift correction),
+  plain-text extraction, time-range extraction, cue/duration/reading-speed
+  statistics, cue merging and renumbering, formatting-tag stripping, and
+  validation/auto-fix of overlapping or malformed cues.
+nodes:
+    - name: DetectFormat
+      input: DetectFormatRequest
+      output: DetectFormatResult
+      description: >
+        Detects a subtitle document's format (SRT, WebVTT, ASS, SSA, SBV,
+        SMI, or LRC) from its content alone, without parsing it into cues.
+        Returns detected=false and an empty format for unrecognized content
+        rather than an error.
+    - name: ParseSubtitle
+      input: RawSubtitle
+      output: SubtitleDocumentResult
+      description: >
+        Parses a subtitle file into the normalized SubtitleDocument (cues
+        with start/end times in milliseconds). Auto-detects the format
+        unless an explicit format is supplied, and fails with a structured
+        error if the format cannot be determined.
+    - name: ParseSrt
+      input: RawSubtitle
+      output: SubtitleDocumentResult
+      description: >
+        Force-parses content as SubRip (.srt) into the normalized
+        SubtitleDocument, ignoring any format hint and skipping
+        auto-detection.
+    - name: ParseWebVtt
+      input: RawSubtitle
+      output: SubtitleDocumentResult
+      description: >
+        Force-parses content as WebVTT (.vtt) into the normalized
+        SubtitleDocument, capturing the WEBVTT header banner, NOTE/REGION/
+        STYLE blocks, and each cue's positioning/settings text (e.g.
+        "position:10%,line:0") that generic parsing normalizes away.
+    - name: ParseAss
+      input: RawSubtitle
+      output: SubtitleDocumentResult
+      description: >
+        Force-parses content as SubStation Alpha (ASS or the older SSA
+        dialect) into the normalized SubtitleDocument, capturing style
+        definitions, Script Info metadata, and each dialogue line's
+        Style/Name/Margin/Effect/Layer columns.
+    - name: SerializeSrt
+      input: SubtitleDocument
+      output: RawSubtitleResult
+      description: >
+        Serializes a normalized SubtitleDocument to SubRip (.srt) text.
+    - name: SerializeWebVtt
+      input: SubtitleDocument
+      output: RawSubtitleResult
+      description: >
+        Serializes a normalized SubtitleDocument to WebVTT (.vtt) text,
+        reconstructing the header banner, NOTE/REGION/STYLE blocks, and
+        each cue's settings text from the document's fields.
+    - name: SerializeAss
+      input: SubtitleDocument
+      output: RawSubtitleResult
+      description: >
+        Serializes a normalized SubtitleDocument to SubStation Alpha text
+        (ASS or SSA dialect, chosen by the document's format field),
+        reconstructing Script Info and style definitions from the
+        document's fields, falling back to a standard default style when
+        the document has none of its own.
+    - name: ConvertSrtToWebVtt
+      input: RawSubtitle
+      output: RawSubtitleResult
+      description: >
+        Converts SubRip (.srt) text directly to WebVTT (.vtt) text — the
+        highest-demand subtitle format conversion.
+    - name: ConvertWebVttToSrt
+      input: RawSubtitle
+      output: RawSubtitleResult
+      description: >
+        Converts WebVTT (.vtt) text directly to SubRip (.srt) text.
+    - name: ConvertFormat
+      input: ConvertFormatRequest
+      output: RawSubtitleResult
+      description: >
+        Converts subtitle text between any two of the seven formats
+        subsrt-ts supports (srt, vtt, ass, ssa, sbv, smi, lrc) — covers
+        every pair beyond the two dedicated SRT/WebVTT convert nodes.
+    - name: ShiftTiming
+      input: ShiftTimingRequest
+      output: SubtitleDocumentResult
+      description: >
+        Shifts every cue's start and end time by a constant millisecond
+        offset (positive or negative) — resyncing a subtitle file that
+        plays too early or too late against its video.
+    - name: ScaleTiming
+      input: ScaleTimingRequest
+      output: SubtitleDocumentResult
+      description: >
+        Re-times every cue by a multiplicative factor, for correcting
+        framerate drift (e.g. 23.976 vs 25 fps) — supply a direct factor,
+        or a from_fps/to_fps pair to derive it.
+    - name: ExtractText
+      input: SubtitleDocument
+      output: PlainTextResult
+      description: >
+        Extracts just the plain text of every cue, with timing and markup
+        removed, for feeding a transcript to an LLM or a downstream
+        text-analysis node.
+    - name: ExtractRange
+      input: ExtractRangeRequest
+      output: SubtitleDocumentResult
+      description: >
+        Keeps only the cues that overlap a caller-supplied time window,
+        with their original timing unchanged and renumbered 1..N.
+    - name: ComputeStats
+      input: SubtitleDocument
+      output: StatsResult
+      description: >
+        Computes cue count, total on-screen duration, document time span,
+        and reading-speed (characters per second) statistics per cue and
+        averaged — the caption-quality node.
+    - name: MergeCues
+      input: MergeCuesRequest
+      output: SubtitleDocumentResult
+      description: >
+        Merges consecutive cues into one wherever the gap between them is
+        within a caller-supplied threshold — cleanup for over-segmented
+        captions.
+    - name: RenumberCues
+      input: SubtitleDocument
+      output: SubtitleDocumentResult
+      description: >
+        Resets every cue's index to a sequential 1..N in the document's
+        existing order, without reordering.
+    - name: StripFormatting
+      input: SubtitleDocument
+      output: SubtitleDocumentResult
+      description: >
+        Strips formatting tags from every cue by overwriting its raw
+        content with the already-cleaned text field.
+    - name: ValidateSubtitle
+      input: SubtitleDocument
+      output: ValidationResult
+      description: >
+        Checks a document's cues for negative/zero duration, out-of-order
+        timestamps, overlapping cues, and empty text, reporting each issue
+        by cue index and severity.
+    - name: FixCommonIssues
+      input: SubtitleDocument
+      output: SubtitleDocumentResult
+      description: >
+        Automatically corrects common issues: sorts cues by start time and
+        clamps any non-positive-duration cue to a minimum 1ms duration.

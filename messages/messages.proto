@@ -1,0 +1,284 @@
+// This file defines the data contracts (messages) for your Axiom package.
+// Every node's --input and --output refers to a message defined here.
+//
+// Run `axiom create message <Name>` to scaffold a new message below.
+// Run `axiom generate` to compile these definitions into language bindings in gen/.
+//
+// DOCUMENTATION
+//   Comments written directly above a message or field declaration are extracted
+//   automatically at publish time and shown in the Axiom registry as documentation.
+//   Write your descriptions there — no separate doc files needed.
+//
+//   Leading comment  (no blank line before the declaration) → registry description ✓
+//   Detached comment (blank line before the declaration)    → ignored by registry  ✗
+//
+// This file is yours to edit. Axiom only appends new message blocks — it never
+// overwrites or removes content you have written.
+
+syntax = "proto3";
+
+package christiangeorgelucas.subtitle_tools;
+
+// ============================================================================
+// Canonical envelopes — every subtitle-tools node reads and/or writes these.
+// Wraps subsrt-ts (MIT, zero runtime dependencies): SRT/WebVTT/ASS/SSA plus
+// SBV/SMI/LRC. All timings are normalized to integer milliseconds regardless
+// of the source format's native time notation. Everything is a pure,
+// deterministic, single-input -> single-output transform over caller-supplied
+// text — no file I/O, no network, no wall-clock, no randomness.
+// ============================================================================
+
+// RawSubtitle carries a subtitle file as literal text plus its format tag.
+// Every node that ingests or emits actual subtitle-FILE text (SRT/WebVTT/
+// ASS/SSA source, not the normalized cue structure) uses this envelope, so
+// parse -> transform -> serialize composes cleanly across a flow.
+message RawSubtitle {
+  // Full subtitle file text, exactly as it would appear on disk.
+  string content = 1;
+  // Format tag: "srt" | "vtt" | "ass" | "ssa" | "sbv" | "smi" | "lrc".
+  // On input to a format-SPECIFIC node (ParseSrt, ConvertSrtToWebVtt, ...)
+  // this field is ignored. On input to ParseSubtitle/ConvertFormat, a
+  // non-empty value skips auto-detection. Always populated on output.
+  string format = 2;
+}
+
+// Cue is one normalized subtitle entry: a time-boxed piece of text.
+// Timings are ALWAYS normalized to milliseconds from the start of the
+// document, regardless of the source format's native time notation
+// (SRT's "," separator, WebVTT's ".", ASS/SSA's centisecond fields).
+message Cue {
+  // 1-based display order within the document (SRT's own sequence number,
+  // or assembled order for formats without an explicit index).
+  int32 index = 1;
+  // Cue start time, milliseconds from document start. Always >= 0.
+  int64 start_ms = 2;
+  // Cue end time, milliseconds from document start. Normally > start_ms;
+  // see ValidateSubtitle for a node that flags when it is not.
+  int64 end_ms = 3;
+  // Plain text with source-format markup already stripped by the parser
+  // (<i>, {\an8}/{\pos(...)}, ASS "\N" line breaks, ">> SPEAKER:" prefixes).
+  // This is what ExtractText concatenates across cues.
+  string text = 4;
+  // Raw cue text as written in the source, markup intact (informational —
+  // captured for inspection/analysis). subsrt-ts's own builders always
+  // serialize from the CLEANED `text` field above, never this one — so
+  // every Serialize*/Convert* node emits from `text`, matching the
+  // library's own parse -> build contract; markup captured here is not
+  // reconstructed on output. StripFormatting overwrites this field with
+  // `text` so a later inspection sees the already-cleaned form too.
+  string content = 5;
+  // WebVTT cue settings string verbatim (e.g. "position:10%,line:0,align:start"),
+  // the text following the "-->" timing line on the same line. Empty for
+  // every non-VTT format and for a VTT cue with no settings.
+  string settings = 6;
+  // Format-specific extra columns the normalized fields above can't carry
+  // — e.g. an ASS/SSA Dialogue line's "Style"/"Name"/"MarginL"/"MarginR"/
+  // "MarginV"/"Effect"/"Layer" columns, keyed by column name. Empty for
+  // SRT/WebVTT.
+  map<string, string> fields = 7;
+}
+
+// NoteEntry is an out-of-band annotation carried alongside cues: a WebVTT
+// NOTE/REGION/STYLE block, or an ASS/SSA "Script Info" metadata line.
+message NoteEntry {
+  // WebVTT: the block keyword ("NOTE", "REGION", "STYLE"). ASS/SSA: the
+  // Script Info key (e.g. "Title", "ScriptType", "PlayResX").
+  string name = 1;
+  // Free-text payload / value.
+  string data = 2;
+}
+
+// StyleEntry is one named style definition from an ASS/SSA
+// [V4 Styles]/[V4+ Styles] block. Empty for every non-ASS/SSA format.
+message StyleEntry {
+  // Column name -> value for this Style line, e.g. "Name" -> "Default",
+  // "Fontname" -> "Arial", "Fontsize" -> "28", per the block's own
+  // "Format:" column list.
+  map<string, string> fields = 1;
+}
+
+// SubtitleDocument is the canonical NORMALIZED envelope: format + ordered
+// cues + header/notes/styles metadata. Every transform node (shift, scale,
+// extract, merge, renumber, strip, validate, fix) reads and writes this
+// type, so they compose freely regardless of which format the file
+// originated from.
+message SubtitleDocument {
+  // Source/target format tag: "srt" | "vtt" | "ass" | "ssa" | "sbv" |
+  // "smi" | "lrc".
+  string format = 1;
+  // Cues in SOURCE order (not necessarily start_ms order — see
+  // ValidateSubtitle for out-of-order detection, FixCommonIssues to sort).
+  repeated Cue cues = 2;
+  // WebVTT header text following the "WEBVTT" line (an optional
+  // identifier/description banner). Empty for every other format.
+  string header = 3;
+  // WebVTT NOTE/REGION/STYLE blocks, or ASS/SSA Script Info fields, in
+  // source order. Empty for SRT and for a VTT/ASS document with none.
+  repeated NoteEntry notes = 4;
+  // ASS/SSA style definitions. Empty for SRT/WebVTT/SBV/SMI/LRC.
+  repeated StyleEntry styles = 5;
+}
+
+// ============================================================================
+// Shared result wrappers — every node returns ok=false + a populated error
+// on malformed input rather than throwing, so a caller always gets a
+// structured, typed failure instead of an RPC-level crash.
+// ============================================================================
+
+message SubtitleDocumentResult {
+  bool ok = 1;
+  string error = 2;
+  SubtitleDocument document = 3;
+}
+
+message RawSubtitleResult {
+  bool ok = 1;
+  string error = 2;
+  RawSubtitle subtitle = 3;
+}
+
+// ============================================================================
+// DetectFormat — identify a subtitle document's format from its content
+// alone, without parsing it.
+// ============================================================================
+
+message DetectFormatRequest {
+  string content = 1;
+}
+
+message DetectFormatResult {
+  bool ok = 1;
+  string error = 2;
+  // "srt" | "vtt" | "ass" | "ssa" | "sbv" | "smi" | "lrc" | "" (undetected).
+  string format = 3;
+  bool detected = 4;
+}
+
+// ============================================================================
+// ConvertFormat — generic parse-then-build across any two of the seven
+// formats subsrt-ts supports (srt/vtt/ass/ssa/sbv/smi/lrc). The dedicated
+// ConvertSrtToWebVtt/ConvertWebVttToSrt nodes below cover the two
+// highest-demand conversions by name; this node covers every other pair
+// (e.g. srt -> ass, vtt -> ass) without needing one node per pair.
+// ============================================================================
+
+message ConvertFormatRequest {
+  RawSubtitle source = 1;
+  // Target format: "srt" | "vtt" | "ass" | "ssa" | "sbv" | "smi" | "lrc".
+  string to_format = 2;
+}
+
+// ============================================================================
+// ShiftTiming — the #1 real subtitle operation: resync every cue by a
+// constant offset (positive = later, negative = earlier), unchanged
+// duration per cue.
+// ============================================================================
+
+message ShiftTimingRequest {
+  SubtitleDocument document = 1;
+  // Milliseconds to add to every cue's start_ms and end_ms. May be negative.
+  int64 offset_ms = 2;
+}
+
+// ============================================================================
+// ScaleTiming — re-time every cue by a multiplicative factor, e.g. to
+// correct framerate drift (23.976 <-> 25 fps). Supply EITHER `factor`
+// directly, OR both `from_fps`/`to_fps` (factor is then derived as
+// from_fps / to_fps — the ratio that converts a timestamp authored
+// assuming from_fps into one correct for playback at to_fps). Applied as
+// new_ms = round(old_ms * factor), independently of offset_ms (see
+// ShiftTiming to also shift after scaling — compose the two nodes).
+// ============================================================================
+
+message ScaleTimingRequest {
+  SubtitleDocument document = 1;
+  // Direct scale factor. 0 (unset) means "derive from from_fps/to_fps".
+  double factor = 2;
+  double from_fps = 3;
+  double to_fps = 4;
+}
+
+// ============================================================================
+// ExtractText — strip all timing and markup, returning just the cue text
+// (for feeding a transcript to an LLM or a readability/tokenizer node).
+// ============================================================================
+
+message PlainTextResult {
+  bool ok = 1;
+  string error = 2;
+  // Every cue's `text`, in cue order, separated by a blank line.
+  string text = 3;
+}
+
+// ============================================================================
+// ExtractRange — keep only cues that overlap a caller-supplied time window.
+// ============================================================================
+
+message ExtractRangeRequest {
+  SubtitleDocument document = 1;
+  int64 start_ms = 2;
+  int64 end_ms = 3;
+}
+
+// ============================================================================
+// ComputeStats — cue count, total duration, and reading-speed (chars per
+// second) statistics — the caption-quality node.
+// ============================================================================
+
+message CueReadingStat {
+  int32 index = 1;
+  int32 char_count = 2;
+  int64 duration_ms = 3;
+  // char_count / (duration_ms / 1000). 0 when duration_ms <= 0.
+  double chars_per_second = 4;
+}
+
+message StatsResult {
+  bool ok = 1;
+  string error = 2;
+  int32 cue_count = 3;
+  // Sum of every cue's own (end_ms - start_ms) — total on-screen time,
+  // NOT the document span (see first_start_ms/last_end_ms for that).
+  int64 total_duration_ms = 4;
+  int64 first_start_ms = 5;
+  int64 last_end_ms = 6;
+  // Mean of each cue's chars_per_second (cues with duration_ms <= 0 are
+  // excluded from the mean, not counted as 0).
+  double avg_chars_per_second = 7;
+  repeated CueReadingStat cue_stats = 8;
+}
+
+// ============================================================================
+// MergeCues — combine consecutive cues into one when the gap between them
+// is small enough (over-segmented captions cleanup).
+// ============================================================================
+
+message MergeCuesRequest {
+  SubtitleDocument document = 1;
+  // Merge cue[i+1] into cue[i] when (cue[i+1].start_ms - cue[i].end_ms) <=
+  // max_gap_ms. 0 merges only strictly touching/overlapping cues.
+  int64 max_gap_ms = 2;
+}
+
+// ============================================================================
+// ValidateSubtitle — detect overlapping cues, negative/zero durations, and
+// out-of-order timestamps, reporting issues by cue index.
+// ============================================================================
+
+message ValidationIssue {
+  // The offending Cue's `index` field (0 if the issue is document-level).
+  int32 cue_index = 1;
+  // "overlap" | "negative_duration" | "zero_duration" | "out_of_order" | "empty_text".
+  string kind = 2;
+  // "error" | "warning".
+  string severity = 3;
+  string message = 4;
+}
+
+message ValidationResult {
+  bool ok = 1;
+  string error = 2;
+  // True iff there are zero "error"-severity issues.
+  bool valid = 3;
+  repeated ValidationIssue issues = 4;
+}
