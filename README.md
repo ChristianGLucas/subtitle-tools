@@ -6,7 +6,7 @@ conversion, and manipulation — SRT (SubRip), WebVTT, and ASS/SSA
 [subsrt-ts](https://github.com/leranjun/subsrt-ts) (MIT, zero runtime
 dependencies).
 
-Built for the [Axiom](https://axiom.dev) marketplace, publisher handle
+Built for the [Axiom](https://axiomide.com) marketplace, publisher handle
 `christiangeorgelucas`.
 
 Every node is a pure, deterministic, single-input -> single-output
