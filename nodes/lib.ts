@@ -212,9 +212,8 @@ export function captionsToDocument(captions: Caption[], format: string, vttSetti
 /** Parses raw content into this package's canonical SubtitleDocument.
  * `formatHint`, when non-empty, is passed straight to subsrt.parse() as the
  * forced format (skips auto-detection) — used by ParseSrt/ParseWebVtt/
- * ParseAss. Throws BoundsError on oversized input/output and re-throws
- * subsrt-ts's own errors (e.g. "Cannot determine subtitle format")
- * unchanged; callers catch and wrap via errorMessage. */
+ * ParseAss. Re-throws subsrt-ts's own errors (e.g. "Cannot determine
+ * subtitle format") unchanged; callers catch and wrap via errorMessage. */
 export function parseToDocument(content: string, formatHint: string): SubtitleDocument {
   const format = formatHint || detectFormat(content);
   if (!format) {
