@@ -1,6 +1,6 @@
 import { DetectFormatRequest, DetectFormatResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { checkContentLen, detectFormat as detectFormatLib, errorMessage, BoundsError } from './lib';
+import { detectFormat as detectFormatLib, errorMessage, BoundsError } from './lib';
 
 /**
  * Detects a subtitle document's format (SRT, WebVTT, ASS, or SSA — plus SBV/
@@ -14,7 +14,6 @@ import { checkContentLen, detectFormat as detectFormatLib, errorMessage, BoundsE
 export function detectFormat(ax: AxiomContext, input: DetectFormatRequest): DetectFormatResult {
   const out = new DetectFormatResult();
   try {
-    checkContentLen(input.getContent());
     const format = detectFormatLib(input.getContent());
     out.setOk(true);
     out.setFormat(format);

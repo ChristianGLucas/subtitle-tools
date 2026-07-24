@@ -1,6 +1,6 @@
 import { SubtitleDocument, ValidationIssue, ValidationResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { checkCueCount, errorMessage, BoundsError } from './lib';
+import { errorMessage, BoundsError } from './lib';
 
 function issue(cueIndex: number, kind: string, severity: string, message: string): ValidationIssue {
   const v = new ValidationIssue();
@@ -33,7 +33,6 @@ export function validateSubtitle(ax: AxiomContext, input: SubtitleDocument): Val
   const out = new ValidationResult();
   try {
     const cues = input.getCuesList();
-    checkCueCount(cues.length);
     const issues: ValidationIssue[] = [];
     for (let i = 0; i < cues.length; i++) {
       const cue = cues[i];

@@ -37,40 +37,7 @@ import { helper as ssaHelper } from './vendor/subsrt-ts/format/ssa';
 import type { Caption, ContentCaption, MetaCaption, StyleCaption } from './vendor/subsrt-ts/types/handler';
 import { Cue, NoteEntry, StyleEntry, SubtitleDocument } from '../gen/messages_pb';
 
-/** Ceiling on a single subtitle file's raw text. A feature-length film's SRT
- * or VTT (a few thousand cues) is well under a few hundred KB; this leaves
- * generous headroom while keeping the resulting SubtitleDocument protobuf
- * message (each cue adds encoding overhead) well clear of Axiom's ~4MiB
- * node gRPC message cap once every cue's start/end/text/content is
- * populated. Checked on the RAW input string, before any parsing runs. */
-export const MAX_CONTENT_CHARS = 2_000_000;
-
-/** Ceiling on the number of cues a single request will process, checked
- * AFTER parsing (parse cost itself is bounded by MAX_CONTENT_CHARS above).
- * A feature film with one cue every 2 seconds for 4 hours is ~7,200 cues;
- * 20,000 leaves generous headroom while still bounding the O(n) work every
- * transform node below does per cue, and the output message size. */
-export const MAX_CUES = 20_000;
-
-/** Defense-in-depth ceiling on a single cue's text/content field,
- * independent of the overall MAX_CONTENT_CHARS cap — protects downstream
- * per-cue string work (ExtractText concatenation, StripFormatting, etc.)
- * from one adversarially long single cue. */
-export const MAX_CUE_TEXT_CHARS = 200_000;
-
 export class BoundsError extends Error {}
-
-export function checkContentLen(content: string): void {
-  if (content.length > MAX_CONTENT_CHARS) {
-    throw new BoundsError(`content is longer than ${MAX_CONTENT_CHARS} characters`);
-  }
-}
-
-export function checkCueCount(n: number): void {
-  if (n > MAX_CUES) {
-    throw new BoundsError(`document has ${n} cues, exceeding the ${MAX_CUES}-cue limit`);
-  }
-}
 
 /** Rejects a document containing any cue with a negative start_ms or
  * end_ms. Every per-format time-string formatter this package uses
@@ -119,7 +86,6 @@ const KNOWN_FORMATS = new Set(['srt', 'vtt', 'ass', 'ssa', 'sbv', 'smi', 'lrc', 
  * nodes/detect_format_test.ts for the regression case. Every other format
  * detection is untouched and still delegates entirely to subsrt.detect(). */
 export function detectFormat(content: string): string {
-  checkContentLen(content);
   if (/^\s*WEBVTT([ \t][^\r\n]*)?\r?\n/.test(content)) return 'vtt';
   return subsrt.detect(content) || '';
 }
@@ -240,7 +206,6 @@ export function captionsToDocument(captions: Caption[], format: string, vttSetti
       continue;
     }
   }
-  checkCueCount(doc.getCuesList().length);
   return doc;
 }
 
@@ -251,7 +216,6 @@ export function captionsToDocument(captions: Caption[], format: string, vttSetti
  * subsrt-ts's own errors (e.g. "Cannot determine subtitle format")
  * unchanged; callers catch and wrap via errorMessage. */
 export function parseToDocument(content: string, formatHint: string): SubtitleDocument {
-  checkContentLen(content);
   const format = formatHint || detectFormat(content);
   if (!format) {
     throw new Error('cannot determine subtitle format from content; pass an explicit format or use DetectFormat first');
@@ -292,7 +256,6 @@ export function documentCuesToCaptions(doc: SubtitleDocument): ContentCaption[] 
  * package's SubtitleDocument carries beyond cues is lost by using the
  * library's own builder unmodified. */
 export function buildSrt(doc: SubtitleDocument): string {
-  checkCueCount(doc.getCuesList().length);
   checkNonNegativeCues(doc.getCuesList());
   const captions = documentCuesToCaptions(doc);
   return subsrt.build(captions as unknown as Caption[], { format: 'srt' });
@@ -308,7 +271,6 @@ const CRLF = '\r\n';
  * `format/vtt.ts:helper.toTimeString`, not re-derived here. */
 export function buildVtt(doc: SubtitleDocument): string {
   const cues = doc.getCuesList();
-  checkCueCount(cues.length);
   checkNonNegativeCues(cues);
   let out = 'WEBVTT';
   const header = doc.getHeader();
@@ -363,7 +325,6 @@ const ASS_DEFAULT_SCRIPT_INFO: [string, string][] = [
  * (false), matching subsrt-ts's own ass-vs-ssa distinction. */
 export function buildAss(doc: SubtitleDocument, isAss: boolean): string {
   const cues = doc.getCuesList();
-  checkCueCount(cues.length);
   checkNonNegativeCues(cues);
   const columns = isAss ? ASS_V4_PLUS_COLUMNS : ASS_V4_COLUMNS;
   const defaultStyle = isAss ? ASS_V4_PLUS_DEFAULT_STYLE : ASS_V4_DEFAULT_STYLE;
@@ -485,7 +446,6 @@ function renumberSequenceLines(content: string): string {
  * means auto-detect (subsrt.convert's own behavior). Throws on an unknown
  * `toFormat` or undetectable `fromFormat`; callers catch and wrap. */
 export function convertContent(content: string, fromFormat: string, toFormat: string): string {
-  checkContentLen(content);
   if (!isKnownFormat(toFormat)) {
     throw new Error(`unsupported target format: "${toFormat}"`);
   }

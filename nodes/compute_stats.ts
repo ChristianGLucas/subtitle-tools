@@ -1,6 +1,6 @@
 import { CueReadingStat, SubtitleDocument, StatsResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { checkCueCount, errorMessage, BoundsError } from './lib';
+import { errorMessage, BoundsError } from './lib';
 
 /**
  * Computes cue count, total on-screen duration, document span, and
@@ -18,7 +18,6 @@ export function computeStats(ax: AxiomContext, input: SubtitleDocument): StatsRe
   const out = new StatsResult();
   try {
     const cues = input.getCuesList();
-    checkCueCount(cues.length);
     out.setCueCount(cues.length);
     if (cues.length === 0) {
       out.setOk(true);

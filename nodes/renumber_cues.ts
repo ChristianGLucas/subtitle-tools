@@ -1,6 +1,6 @@
 import { Cue, SubtitleDocument, SubtitleDocumentResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { withCues, checkCueCount, errorMessage, BoundsError } from './lib';
+import { withCues, errorMessage, BoundsError } from './lib';
 
 /**
  * Resets every cue's `index` to a sequential 1..N in the document's
@@ -14,7 +14,6 @@ export function renumberCues(ax: AxiomContext, input: SubtitleDocument): Subtitl
   const out = new SubtitleDocumentResult();
   try {
     const cues = input.getCuesList();
-    checkCueCount(cues.length);
     const renumbered = cues.map((c, i) => {
       const clone = c.cloneMessage() as Cue;
       clone.setIndex(i + 1);

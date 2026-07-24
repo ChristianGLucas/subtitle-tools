@@ -1,6 +1,6 @@
 import { Cue, SubtitleDocument, SubtitleDocumentResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { withCues, checkCueCount, errorMessage, BoundsError } from './lib';
+import { withCues, errorMessage, BoundsError } from './lib';
 
 const MIN_DURATION_MS = 1;
 
@@ -19,7 +19,6 @@ export function fixCommonIssues(ax: AxiomContext, input: SubtitleDocument): Subt
   const out = new SubtitleDocumentResult();
   try {
     const cues = input.getCuesList();
-    checkCueCount(cues.length);
     const sorted = cues
       .map((c) => c.cloneMessage() as Cue)
       .sort((a, b) => a.getStartMs() - b.getStartMs());

@@ -1,6 +1,6 @@
 import { Cue, SubtitleDocument, SubtitleDocumentResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { withCues, checkCueCount, errorMessage, BoundsError } from './lib';
+import { withCues, errorMessage, BoundsError } from './lib';
 
 /**
  * Strips formatting from every cue by overwriting `content` (raw, markup
@@ -17,7 +17,6 @@ export function stripFormatting(ax: AxiomContext, input: SubtitleDocument): Subt
   const out = new SubtitleDocumentResult();
   try {
     const cues = input.getCuesList();
-    checkCueCount(cues.length);
     const stripped = cues.map((c) => {
       const clone = c.cloneMessage() as Cue;
       clone.setContent(clone.getText());

@@ -1,6 +1,6 @@
 import { Cue, ExtractRangeRequest, SubtitleDocumentResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { withCues, checkCueCount, errorMessage, BoundsError } from './lib';
+import { withCues, errorMessage, BoundsError } from './lib';
 
 /**
  * Keeps only the cues that overlap a caller-supplied [start_ms, end_ms)
@@ -19,7 +19,6 @@ export function extractRange(ax: AxiomContext, input: ExtractRangeRequest): Subt
     const startMs = input.getStartMs();
     const endMs = input.getEndMs();
     if (endMs <= startMs) throw new Error('end_ms must be greater than start_ms');
-    checkCueCount(doc.getCuesList().length);
     const kept = doc
       .getCuesList()
       .filter((c) => c.getEndMs() > startMs && c.getStartMs() < endMs)

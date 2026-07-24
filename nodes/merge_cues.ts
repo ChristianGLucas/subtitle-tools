@@ -1,6 +1,6 @@
 import { Cue, MergeCuesRequest, SubtitleDocumentResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { withCues, checkCueCount, errorMessage, BoundsError } from './lib';
+import { withCues, errorMessage, BoundsError } from './lib';
 
 /**
  * Merges consecutive cues into one wherever the gap between them is small
@@ -21,7 +21,6 @@ export function mergeCues(ax: AxiomContext, input: MergeCuesRequest): SubtitleDo
     if (!doc) throw new Error('document is required');
     const maxGapMs = input.getMaxGapMs();
     const cues = doc.getCuesList();
-    checkCueCount(cues.length);
     const merged: Cue[] = [];
     for (const cue of cues) {
       const prev = merged[merged.length - 1];

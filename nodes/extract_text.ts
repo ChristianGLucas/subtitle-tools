@@ -1,6 +1,6 @@
 import { SubtitleDocument, PlainTextResult } from '../gen/messages_pb';
 import { AxiomContext } from '../gen/axiomContext';
-import { checkCueCount, errorMessage, BoundsError } from './lib';
+import { errorMessage, BoundsError } from './lib';
 
 /**
  * Extracts just the plain text of every cue — no timing, no markup, no
@@ -15,7 +15,6 @@ export function extractText(ax: AxiomContext, input: SubtitleDocument): PlainTex
   const out = new PlainTextResult();
   try {
     const cues = input.getCuesList();
-    checkCueCount(cues.length);
     out.setText(cues.map((c) => c.getText()).join('\n\n'));
     out.setOk(true);
   } catch (e) {
